@@ -5,8 +5,8 @@ use std::{convert::Infallible, sync::Arc};
 use axum::{extract::{FromRequestParts, Path}, http::StatusCode, routing::get, Json, Router};
 use serde::{Serialize, Deserialize};
 use tokio::net::TcpListener;
-use tokio_postgres::{types::Timestamp, Statement};
-use chrono::{DateTime, NaiveDate, Utc};
+use tokio_postgres::Statement;
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 #[derive(Debug, Serialize)]
 struct User {
@@ -15,8 +15,9 @@ struct User {
     email: String,
     password: String,
     trang_thai: String,
-    created_at: NaiveDate,
-    updated_at: NaiveDate,
+
+    created_at: NaiveDateTime,
+    updated_at: NaiveDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,7 +34,7 @@ struct Book {
     author: String,
     content: String,
     category: String,
-    publish_date: NaiveDate,
+    publish_date: NaiveDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,21 +43,21 @@ struct BookPayload {
     author: String,
     content: String,
     category: String,
-    publish_date: NaiveDate,
+    publish_date: NaiveDateTime,
 }
 
 #[derive(Debug, Serialize)]
 struct Borrow {
     username: String,
     title: String,
-    borrow_date: NaiveDate,
+    borrow_date: NaiveDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct BorrowPayload {
     user_id: i32,
     book_id: i32,
-    borrow_date: NaiveDate,
+    borrow_date: NaiveDateTime,
 }
 
 struct PgConn {
