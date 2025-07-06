@@ -5,7 +5,8 @@ use std::{convert::Infallible, sync::Arc};
 use axum::{extract::{FromRequestParts, Path}, http::StatusCode, routing::get, Json, Router};
 use serde::{Serialize, Deserialize};
 use tokio::net::TcpListener;
-use tokio_postgres::Statement;
+use tokio_postgres::{types::Timestamp, Statement};
+use chrono::{DateTime, NaiveDate, Utc};
 
 #[derive(Debug, Serialize)]
 struct User {
@@ -14,8 +15,8 @@ struct User {
     email: String,
     password: String,
     trang_thai: String,
-    created_at: String,
-    updated_at: String
+    created_at: NaiveDate,
+    updated_at: NaiveDate,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,7 +33,7 @@ struct Book {
     author: String,
     content: String,
     category: String,
-    publish_date: String,
+    publish_date: NaiveDate,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,21 +42,21 @@ struct BookPayload {
     author: String,
     content: String,
     category: String,
-    publish_date: String,
+    publish_date: NaiveDate,
 }
 
 #[derive(Debug, Serialize)]
 struct Borrow {
     username: String,
     title: String,
-    borrow_date: String
+    borrow_date: NaiveDate,
 }
 
 #[derive(Debug, Deserialize)]
 struct BorrowPayload {
     user_id: i32,
     book_id: i32,
-    borrow_date: String
+    borrow_date: NaiveDate,
 }
 
 struct PgConn {
@@ -213,8 +214,8 @@ async fn list_borrow(AppState(state): AppState, Path(user_id): Path<i32>, Path(b
     Json(borrow)
 }
 
-async fn list_borrows_by_user(AppState(state): AppState, Path(id): Path<i32>) -> Json<Vec<Borrow>> {
-    let rows = state.client.query(&state.l_borrows_by_user, &[&id]).await.unwrap();
+async fn list_borrows_by_user(AppState(state): AppState, Path(user_id): Path<i32>) -> Json<Vec<Borrow>> {
+    let rows = state.client.query(&state.l_borrows_by_user, &[&user_id]).await.unwrap();
     let borrows = rows.iter().map(|row| Borrow {
         username: row.get(0),
         title: row.get(1),
@@ -224,8 +225,8 @@ async fn list_borrows_by_user(AppState(state): AppState, Path(id): Path<i32>) ->
     Json(borrows)
 }
 
-async fn list_borrows_by_book(AppState(state): AppState, Path(id): Path<i32>) -> Json<Vec<Borrow>> {
-    let rows = state.client.query(&state.l_borrows_by_book, &[&id]).await.unwrap();
+async fn list_borrows_by_book(AppState(state): AppState, Path(book_id): Path<i32>) -> Json<Vec<Borrow>> {
+    let rows = state.client.query(&state.l_borrows_by_book, &[&book_id]).await.unwrap();
     let borrows = rows.iter().map(|row| Borrow {
         username: row.get(0),
         title: row.get(1),
@@ -268,10 +269,18 @@ async fn main() {
     let u_book = client.prepare("UPDATE \"BOOKS\" SET title = $1, author = $2, content = $3, category = $4, publish_date = $5 WHERE id = $6").await.unwrap();
     let d_book = client.prepare("DELETE FROM \"BOOKS\" WHERE id = $1").await.unwrap();
 
-    let l_borrows = client.prepare("SELECT username, title, borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id").await.unwrap();
-    let l_borrow = client.prepare("SELECT username, title, borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.user_id = $1 AND br.book_id = $2").await.unwrap();
-    let l_borrows_by_user = client.prepare("SELECT username, title, borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.user_id = $1").await.unwrap();
-    let l_borrows_by_book = client.prepare("SELECT username, title, borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.book_id = $1").await.unwrap();
+    let l_borrows = client.prepare(
+        "SELECT u.name AS username, bo.title, br.borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id"
+    ).await.unwrap();
+    let l_borrow = client.prepare(
+        "SELECT u.name AS username, bo.title, br.borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.user_id = $1 AND br.book_id = $2"
+    ).await.unwrap();
+    let l_borrows_by_user = client.prepare(
+        "SELECT u.name AS username, bo.title, br.borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.user_id = $1"
+    ).await.unwrap();
+    let l_borrows_by_book = client.prepare(
+        "SELECT u.name AS username, bo.title, br.borrow_date FROM \"BORROW\" AS br JOIN \"USERS\" AS u ON br.user_id = u.id JOIN \"BOOKS\" AS bo ON br.book_id = bo.id WHERE br.book_id = $1"
+    ).await.unwrap();
     let i_borrow = client.prepare("INSERT INTO \"BORROW\" (user_id, book_id, borrow_date) VALUES ($1, $2, $3)").await.unwrap();
 
     let state = Arc::new(PgConn {
@@ -301,7 +310,7 @@ async fn main() {
             get(list_users).post(insert_user)
         )
         .route(
-            "/api/users/:id",
+            "/api/users/{id}",
             get(list_user).put(update_user).delete(delete_user)
         )
         .route(
@@ -309,7 +318,7 @@ async fn main() {
             get(list_books).post(insert_book)
         )
         .route(
-            "/api/books/:id",
+            "/api/books/{id}",
             get(list_book).put(update_book).delete(delete_book)
         )
         .route(
@@ -317,15 +326,15 @@ async fn main() {
             get(list_borrows).post(insert_borrow)
         )
         .route(
-            "/api/borrows/:user_id/:book_id",
+            "/api/borrows/{user_id}/{book_id}",
             get(list_borrow)
         )
         .route(
-            "/api/books/:user_id",
+            "/api/borrows/books/{user_id}",
             get(list_borrows_by_user)
         )
         .route(
-            "/api/users/:book_id",
+            "/api/borrows/users/{book_id}",
             get(list_borrows_by_book)
         )
         .with_state(state);
