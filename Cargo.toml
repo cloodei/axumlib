@@ -13,4 +13,4 @@ tokio-postgres = { version = "0.7.13", features = ["with-chrono-0_4", "with-serd
 bb8 = "0.9.0"
 bb8-postgres = "0.9.0"
 chrono = { version = "0.4.41", features = ["serde"] }
-redis = { version = "0.32.3", features = ["tokio-comp", "json"] }
+redis = { version = "0.32.3", features = ["tokio-comp", "json", "tokio-native-tls-comp"] }
